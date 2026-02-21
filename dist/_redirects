@@ -1,0 +1,21 @@
+# Netlify/other hosting platforms - ensure static files are accessible
+/sitemap.xml /sitemap.xml 200
+/robots.txt /robots.txt 200
+/*.css /*.css 200
+/*.js /*.js 200
+/*.png /*.png 200
+/*.jpg /*.jpg 200
+/*.jpeg /*.jpeg 200
+/*.gif /*.gif 200
+/*.ico /*.ico 200
+/*.svg /*.svg 200
+/*.webp /*.webp 200
+/*.avif /*.avif 200
+/*.woff /*.woff 200
+/*.woff2 /*.woff2 200
+/*.ttf /*.ttf 200
+/*.eot /*.eot 200
+/*.pdf /*.pdf 200
+
+# SPA fallback - redirect all other requests to index.html
+/* /index.html 200

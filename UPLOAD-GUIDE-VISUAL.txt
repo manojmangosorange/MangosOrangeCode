@@ -1,0 +1,320 @@
+
+╔══════════════════════════════════════════════════════════════════════╗
+║          📤 CPANEL UPLOAD SUMMARY - MANGOSORANGE WEBSITE            ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+📊 YOUR dist/ FOLDER CONTAINS:
+═══════════════════════════════════════════════════════════════════════
+
+Total Files: ~163 files
+Total Size: ~5.4 MB (frontend only)
+
+✅ READY IN YOUR dist/ FOLDER:
+
+📄 FILES:
+   ├── index.html ⭐
+   ├── sitemap.xml ⭐
+   ├── robots.txt ⭐
+   ├── .htaccess (check if present, if not copy from public/.htaccess)
+   └── HMIS_Platform_Video_Creation_Request.mp4
+
+📁 FOLDERS:
+   ├── js/ (JavaScript bundles - ~40 files)
+   ├── css/ (Stylesheets - ~5 files)
+   ├── images/ (Optimized images - ~60+ files)
+   ├── assets/ (Fonts, icons)
+   ├── upload-image/ (Company logo)
+   ├── Empanelment/ (Client logos)
+   ├── client/ (Client resources)
+   └── lovable-uploads/ (Uploaded media)
+
+
+═══════════════════════════════════════════════════════════════════════
+🎯 STEP-BY-STEP UPLOAD PROCESS
+═══════════════════════════════════════════════════════════════════════
+
+STEP 1: PREPARE DATABASE (5 minutes)
+────────────────────────────────────────────────────────────────────────
+In cPanel:
+1. Go to MySQL Databases
+2. Create database: mangosorange_careers
+3. Create user with strong password
+4. Add user to database with ALL PRIVILEGES
+5. Go to phpMyAdmin
+6. Select your database
+7. Click "SQL" tab
+8. Copy-paste contents of: database-setup.sql
+9. Click "Go" to execute
+10. Verify 3 tables created: admin_users, job_postings, applicants
+
+✅ Database ready!
+
+
+STEP 2: CONFIGURE API (2 minutes)
+────────────────────────────────────────────────────────────────────────
+On your LOCAL computer:
+1. Open: api/config.php
+2. Update these values:
+   'host' => 'localhost'                  ← Usually localhost
+   'name' => 'mangosorange_careers'       ← Your DB name
+   'user' => 'your_db_username'           ← Your DB user
+   'pass' => 'your_db_password'           ← Your DB password
+   'jwt_secret' => 'random_32chars_here'  ← Generate random string
+3. Save the file
+
+✅ API configured!
+
+
+STEP 3: UPLOAD FRONTEND FILES (10 minutes)
+────────────────────────────────────────────────────────────────────────
+Method A - cPanel File Manager (Easiest):
+1. Login to cPanel
+2. Open "File Manager"
+3. Navigate to public_html/
+4. DELETE old files (if updating existing site)
+5. Click "Upload" button
+6. Drag ALL files and folders from dist/ folder
+7. Wait for upload to complete
+
+Method B - FileZilla FTP (Faster for large files):
+1. Open FileZilla
+2. Connect to: ftp.yourdomain.com (or your server IP)
+3. Enter cPanel FTP credentials
+4. Navigate to /public_html/ on right side
+5. Drag ALL contents from dist/ folder (left side)
+6. Wait for transfer to complete
+
+✅ Frontend uploaded!
+
+
+STEP 4: UPLOAD BACKEND API FILES (3 minutes)
+────────────────────────────────────────────────────────────────────────
+In cPanel File Manager or FileZilla:
+1. Navigate to public_html/
+2. Create new folder: api
+3. Open the api/ folder
+4. Upload ALL files from your local api/ folder:
+   ✓ bootstrap.php
+   ✓ config.php (the one you just configured!)
+   ✓ auth_login.php
+   ✓ jobs.php
+   ✓ applicants.php
+   ✓ admin_users.php
+   ✓ contact.php
+   ✓ upload_resume.php
+
+✅ Backend uploaded!
+
+
+STEP 5: CREATE RESUME FOLDER (1 minute)
+────────────────────────────────────────────────────────────────────────
+In cPanel File Manager:
+1. Navigate to public_html/
+2. Click "Folder" button
+3. Create folder named: resumes
+4. Right-click on resumes folder → Permissions
+5. Set to: 755 (or 775 if upload fails later)
+
+✅ Upload folder ready!
+
+
+STEP 6: VERIFY .htaccess (1 minute)
+────────────────────────────────────────────────────────────────────────
+Check if .htaccess exists in public_html/:
+
+If NOT present:
+1. In dist/ folder, check if .htaccess exists
+2. If not in dist/, copy from: public/.htaccess
+3. Upload to public_html/ root
+
+If PRESENT but shows files enabled:
+1. Enable "Show Hidden Files" in File Manager settings
+2. Verify .htaccess contains proper rewrite rules
+
+✅ .htaccess verified!
+
+
+═══════════════════════════════════════════════════════════════════════
+🧪 TEST YOUR DEPLOYMENT (5 minutes)
+═══════════════════════════════════════════════════════════════════════
+
+Open these URLs in browser:
+
+1. Homepage:
+   https://yourdomain.com/
+   ✓ Should show homepage with hero section
+
+2. About page:
+   https://yourdomain.com/about
+   ✓ Should show about page (NOT 404!)
+
+3. Sitemap XML:
+   https://yourdomain.com/sitemap.xml
+   ✓ Should show XML with 42 URLs
+
+4. Robots.txt:
+   https://yourdomain.com/robots.txt
+   ✓ Should show robot directives
+
+5. API Test:
+   https://yourdomain.com/api/jobs.php
+   ✓ Should return JSON (empty array [] or job listings)
+
+6. Admin Login:
+   https://yourdomain.com/admin/login
+   ✓ Should show login form
+
+7. Try logging in:
+   Email: admin@mangosorange.com
+   Password: admin123
+   ✓ Should login successfully
+
+8. Test navigation:
+   ✓ Click menu items, all pages should load
+   ✓ No 404 errors on internal pages
+
+
+═══════════════════════════════════════════════════════════════════════
+⚠️  IMPORTANT POST-DEPLOYMENT TASKS
+═══════════════════════════════════════════════════════════════════════
+
+1. CHANGE DEFAULT PASSWORD:
+   - Login to admin panel
+   - Go to Settings
+   - Change password from admin123 to something secure
+
+2. GENERATE NEW JWT SECRET:
+   - Use random 32+ character string
+   - Update in api/config.php
+
+3. TEST RESUME UPLOAD:
+   - Go to Careers page
+   - Apply to a job
+   - Upload test resume
+   - Verify file appears in resumes/ folder
+
+4. SUBMIT SITEMAP TO SEARCH ENGINES:
+   - Google Search Console: Add sitemap URL
+   - Bing Webmaster: Add sitemap URL
+
+5. VERIFY EMAIL NOTIFICATIONS:
+   - Test contact form
+   - Check if emails are received
+
+
+═══════════════════════════════════════════════════════════════════════
+📂 FINAL SERVER STRUCTURE SHOULD BE:
+═══════════════════════════════════════════════════════════════════════
+
+public_html/
+├── index.html                    ⭐ Entry point
+├── .htaccess                     ⭐ URL routing (MUST HAVE!)
+├── sitemap.xml                   ⭐ SEO sitemap
+├── robots.txt                    ⭐ Search engine rules
+├── HMIS_Platform_Video_Creation_Request.mp4
+│
+├── 📁 js/                        ⭐ All JavaScript
+│   ├── react-vendor-xxx.js
+│   ├── router-xxx.js
+│   └── ... (~40 files)
+│
+├── 📁 css/                       ⭐ All stylesheets
+│   └── index-xxx.css (~5 files)
+│
+├── 📁 images/                    ⭐ All images
+│   └── ... (~60+ optimized images)
+│
+├── 📁 assets/                    Fonts, icons
+├── 📁 upload-image/              Company logo
+├── 📁 Empanelment/               Client logos
+├── 📁 client/                    Client resources
+├── 📁 lovable-uploads/           Media uploads
+│
+├── 📁 resumes/                   ⭐ CREATE THIS - Resume storage
+│   └── (uploaded resumes go here)
+│
+└── 📁 api/                       ⭐ PHP Backend
+    ├── bootstrap.php             ⭐ Core functions
+    ├── config.php                ⭐ DB credentials (CONFIGURE!)
+    ├── auth_login.php            Authentication
+    ├── jobs.php                  Job CRUD
+    ├── applicants.php            Application management
+    ├── admin_users.php           User management
+    ├── contact.php               Contact form
+    └── upload_resume.php         File upload handler
+
+
+═══════════════════════════════════════════════════════════════════════
+📋 QUICK TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════
+
+Problem: Internal pages show 404
+→ Solution: Check .htaccess exists and mod_rewrite enabled
+
+Problem: sitemap.xml shows 404
+→ Solution: Verify sitemap.xml is in public_html root
+
+Problem: API returns database error
+→ Solution: Check config.php credentials are correct
+
+Problem: Resume upload fails
+→ Solution: Check resumes/ folder exists with 755/775 permissions
+
+Problem: Admin login fails
+→ Solution: Run database-setup.sql again to create admin user
+
+Problem: CORS errors in console
+→ Solution: Add your domain to allowed_origins in config.php
+
+Problem: Blank page shows
+→ Solution: Check cPanel Error Log for PHP errors
+
+
+═══════════════════════════════════════════════════════════════════════
+✅ DEPLOYMENT CHECKLIST (Print this!)
+═══════════════════════════════════════════════════════════════════════
+
+PRE-UPLOAD:
+□ Built with: npm run build
+□ Created MySQL database in cPanel
+□ Executed database-setup.sql in phpMyAdmin
+□ Configured api/config.php
+□ Generated random JWT secret
+
+UPLOAD:
+□ Uploaded all dist/ contents to public_html/
+□ Uploaded all api/ files to public_html/api/
+□ Created resumes/ folder (755 permissions)
+□ Verified .htaccess is present
+
+TESTING:
+□ Homepage loads correctly
+□ Internal pages work (no 404)
+□ sitemap.xml is accessible
+□ robots.txt is accessible
+□ API endpoint responds with JSON
+□ Admin login works
+□ Can create/edit jobs
+□ Can apply to jobs
+□ Resume uploads work
+
+POST-DEPLOY:
+□ Changed default admin password
+□ Tested all major features
+□ Submitted sitemap to Google
+□ Verified email notifications work
+
+
+═══════════════════════════════════════════════════════════════════════
+
+🎉 READY TO UPLOAD!
+
+Total Time: ~30 minutes for complete deployment
+Difficulty: Easy to Moderate
+
+Need help? Check:
+- CPANEL-DEPLOYMENT.txt (full guide)
+- database-setup.sql (DB setup)
+- cPanel Error Log (for debugging)
+
+═══════════════════════════════════════════════════════════════════════
