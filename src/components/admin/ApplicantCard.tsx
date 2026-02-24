@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ interface ApplicantCardProps {
   onUpdate: () => void;
   jobTitle?: string;
   isGeneralApplication?: boolean;
+  applicationType?: 'job' | 'resume_drop';
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
@@ -25,6 +26,7 @@ const ApplicantCard = ({
   onUpdate,
   jobTitle,
   isGeneralApplication = false,
+  applicationType = 'job',
   selectable = false,
   selected = false,
   onToggleSelect
@@ -33,13 +35,83 @@ const ApplicantCard = ({
   const [status, setStatus] = useState(applicant.status);
   const [notes, setNotes] = useState(applicant.notes || '');
   const [loading, setLoading] = useState(false);
+  const [showShortlistPop, setShowShortlistPop] = useState(false);
+  const shortlistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (shortlistTimerRef.current) {
+        clearTimeout(shortlistTimerRef.current);
+      }
+    };
+  }, []);
+
+  const playShortlistBuzz = () => {
+    try {
+      if (typeof window === 'undefined') return;
+
+      if (navigator.vibrate) {
+        navigator.vibrate(35);
+      }
+
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+      if (!AudioContextClass) return;
+
+      const audioContext = new AudioContextClass();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(900, audioContext.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(1400, audioContext.currentTime + 0.08);
+
+      gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.04, audioContext.currentTime + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.18);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.18);
+      oscillator.onended = () => {
+        audioContext.close();
+      };
+    } catch {
+      // Intentionally silent: vibration/audio can fail on unsupported browsers.
+    }
+  };
+
+  const triggerShortlistPop = () => {
+    setShowShortlistPop(true);
+    playShortlistBuzz();
+
+    if (shortlistTimerRef.current) {
+      clearTimeout(shortlistTimerRef.current);
+    }
+
+    shortlistTimerRef.current = setTimeout(() => {
+      setShowShortlistPop(false);
+    }, 1200);
+  };
 
   const handleSave = async () => {
     setLoading(true);
     try {
-      const success = await careerAPI.updateApplicantStatus(applicant.id, status, notes);
+      const success = applicationType === 'resume_drop'
+        ? await careerAPI.updateResumeDropStatus(applicant.id, status, notes)
+        : await careerAPI.updateApplicantStatus(applicant.id, status, notes);
       if (success) {
-        toast.success('Applicant updated successfully');
+        const movedToShortlisted = applicant.status !== 'Shortlisted' && status === 'Shortlisted';
+        if (movedToShortlisted) {
+          triggerShortlistPop();
+          toast.success('Shortlisted. Nice pick.');
+        } else {
+          toast.success('Applicant updated successfully');
+        }
         setEditing(false);
         onUpdate();
       } else {
@@ -71,7 +143,14 @@ const ApplicantCard = ({
   };
 
   return (
-    <Card className="hover:shadow-md transition-shadow">
+    <Card className={`relative overflow-hidden transition-all ${showShortlistPop ? 'ring-2 ring-amber-300 shadow-lg shadow-amber-100/70' : 'hover:shadow-md'}`}>
+      {showShortlistPop && (
+        <div className="pointer-events-none absolute inset-0 z-10">
+          <div className="absolute right-8 top-8 h-3 w-3 rounded-full bg-amber-400 animate-ping" />
+          <div className="absolute right-14 top-12 h-2 w-2 rounded-full bg-orange-400 animate-ping [animation-delay:120ms]" />
+          <div className="absolute right-10 top-16 h-2.5 w-2.5 rounded-full bg-yellow-300 animate-ping [animation-delay:220ms]" />
+        </div>
+      )}
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div>

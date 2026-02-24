@@ -48,6 +48,7 @@ const AdminDashboardFull = lazy(() => import("./pages/admin/AdminDashboardFull")
 const AdminJobs = lazy(() => import("./pages/admin/AdminJobs"));
 const AdminApplicants = lazy(() => import("./pages/admin/AdminApplicants"));
 const AdminResumeDrop = lazy(() => import("./pages/admin/AdminResumeDrop"));
+const AdminContactLeads = lazy(() => import("./pages/admin/AdminContactLeads"));
 const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
 import ProtectedRoute from "./components/admin/ProtectedRoute";
 import AdminOnlyRoute from "./components/admin/AdminOnlyRoute";
@@ -343,6 +344,13 @@ const App = () => (
             <Suspense fallback={<PageLoader />}>
               <ProtectedRoute>
                 <AdminResumeDrop />
+              </ProtectedRoute>
+            </Suspense>
+          } />
+          <Route path="/admin/contact-leads" element={
+            <Suspense fallback={<PageLoader />}>
+              <ProtectedRoute>
+                <AdminContactLeads />
               </ProtectedRoute>
             </Suspense>
           } />

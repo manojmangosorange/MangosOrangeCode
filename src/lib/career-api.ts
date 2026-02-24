@@ -1,4 +1,4 @@
-import { JobPosting, Applicant, DashboardStats } from '@/types/career';
+import { JobPosting, Applicant, ContactLead, DashboardStats } from '@/types/career';
 import { api } from '@/lib/api';
 
 const unwrapArray = (payload: any): any[] => {
@@ -22,6 +22,23 @@ const readJson = async (response: Response): Promise<any | null> => {
     return null;
   }
 };
+
+const getPublicEndpointCandidates = (file: string): string[] => {
+  const normalized = file.replace(/^\/+/, '');
+  return [`/api/${normalized}`, `/${normalized}`];
+};
+
+const mapContactLead = (lead: any): ContactLead => ({
+  id: String(lead.id),
+  name: lead.name || '',
+  email: lead.email || '',
+  phone: lead.phone || '',
+  subject: lead.subject || 'Contact Form',
+  message: lead.message || '',
+  status: (lead.status || 'New') as ContactLead['status'],
+  createdAt: lead.created_at,
+  updatedAt: lead.updated_at,
+});
 
 const fileToBase64 = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -192,7 +209,9 @@ export const careerAPI = {
   // ------------------------------
   async getApplicants(jobId?: string): Promise<Applicant[]> {
     try {
-      const endpoint = jobId ? `applicants.php?job_id=${encodeURIComponent(jobId)}` : 'applicants.php';
+      const endpoint = jobId
+        ? `applicants.php?job_id=${encodeURIComponent(jobId)}`
+        : 'applicants.php?general=0';
       const response = await api.get<any>(endpoint);
       const rows = unwrapArray(response);
 
@@ -234,6 +253,24 @@ export const careerAPI = {
     }
   },
 
+  async updateResumeDropStatus(
+    id: string,
+    status: Applicant['status'],
+    notes?: string
+  ): Promise<boolean> {
+    try {
+      await api.put<{ success: boolean }>('resume_drop.php', {
+        id,
+        status,
+        notes,
+      });
+      return true;
+    } catch (error) {
+      console.error('Error updating resume drop status:', error);
+      return false;
+    }
+  },
+
   async submitApplication(application: {
     jobId: string;
     name: string;
@@ -243,33 +280,40 @@ export const careerAPI = {
     coverLetter?: string;
   }): Promise<boolean> {
     const body = new URLSearchParams();
-    if (application.jobId) body.append('jobId', application.jobId);
+    const isJobApplication = Boolean(application.jobId);
+    if (isJobApplication) body.append('jobId', application.jobId);
     body.append('name', application.name);
     body.append('email', application.email);
     if (application.phone) body.append('phone', application.phone);
     body.append('resumeUrl', application.resumeUrl);
     if (application.coverLetter) body.append('coverLetter', application.coverLetter);
 
-    try {
-      const response = await fetch('/applicants.php', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        },
-        body: body.toString(),
-      });
+    const endpoints = getPublicEndpointCandidates(isJobApplication ? 'applicants.php' : 'resume_drop.php');
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          },
+          body: body.toString(),
+        });
 
-      const data = await readJson(response);
-      return Boolean(response.ok && data?.success);
-    } catch (error) {
-      console.error('Error submitting application:', error);
-      return false;
+        const data = await readJson(response);
+        if (response.ok && data?.success) {
+          return true;
+        }
+      } catch (error) {
+        console.error(`Error submitting application via ${endpoint}:`, error);
+      }
     }
+
+    return false;
   },
 
   async getGeneralApplications(): Promise<Applicant[]> {
     try {
-      const response = await api.get<any>('applicants.php?general=1');
+      const response = await api.get<any>('resume_drop.php');
       const rows = unwrapArray(response);
 
       return rows.map((applicant: any) => ({
@@ -292,22 +336,59 @@ export const careerAPI = {
   },
 
   // ------------------------------
+  // Contact Leads
+  // ------------------------------
+  async getContactLeads(limit = 50): Promise<{ total: number; items: ContactLead[] }> {
+    try {
+      const safeLimit = Math.max(1, Math.min(200, Number(limit) || 50));
+      const response = await api.get<any>(`contact_leads.php?limit=${safeLimit}`);
+      const data = unwrapObject(response) || {};
+      const rows = unwrapArray(data.items ?? response);
+
+      return {
+        total: Number(data.total ?? rows.length ?? 0),
+        items: rows.map(mapContactLead),
+      };
+    } catch (error) {
+      console.error('Error fetching contact leads:', error);
+      return {
+        total: 0,
+        items: [],
+      };
+    }
+  },
+
+  async updateContactLeadStatus(id: string, status: ContactLead['status']): Promise<boolean> {
+    try {
+      await api.put<{ success: boolean }>('contact_leads.php', { id, status });
+      return true;
+    } catch (error) {
+      console.error('Error updating contact lead status:', error);
+      return false;
+    }
+  },
+
+  // ------------------------------
   // Dashboard Stats
   // ------------------------------
   async getDashboardStats(): Promise<DashboardStats> {
     try {
-      const [jobsResponse, applicantsResponse] = await Promise.all([
+      const [jobsResponse, applicantsResponse, contactLeadsResponse] = await Promise.all([
         api.get<any>('jobs.php?includeHidden=1'),
-        api.get<any>('applicants.php'),
+        api.get<any>('applicants.php?general=0'),
+        api.get<any>('contact_leads.php?limit=5'),
       ]);
 
       const jobs = unwrapArray(jobsResponse);
       const applicants = unwrapArray(applicantsResponse);
+      const contactPayload = unwrapObject(contactLeadsResponse) || {};
+      const contactRows = unwrapArray(contactPayload.items ?? contactLeadsResponse);
 
       const totalJobs = jobs.length;
       const activeJobs = jobs.filter((j: any) => j.status === 'Active').length;
       const totalApplicants = applicants.length;
       const pendingApplications = applicants.filter((a: any) => (a.status || 'Applied') === 'Applied').length;
+      const totalContactLeads = Number(contactPayload.total ?? contactRows.length ?? 0);
 
       const recentApplications = applicants
         .slice()
@@ -332,12 +413,18 @@ export const careerAPI = {
           jobTitle: applicant.job_title || '',
         }));
 
+      const recentContactLeads = contactRows
+        .slice(0, 5)
+        .map(mapContactLead);
+
       return {
         totalJobs,
         activeJobs,
         totalApplicants,
         pendingApplications,
+        totalContactLeads,
         recentApplications,
+        recentContactLeads,
       };
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
@@ -346,7 +433,9 @@ export const careerAPI = {
         activeJobs: 0,
         totalApplicants: 0,
         pendingApplications: 0,
+        totalContactLeads: 0,
         recentApplications: [],
+        recentContactLeads: [],
       };
     }
   },
@@ -355,40 +444,47 @@ export const careerAPI = {
   // File Upload
   // ------------------------------
   async uploadResume(file: File): Promise<string | null> {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const response = await fetch('/upload_resume.php', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await readJson(response);
-      if (response.ok && data?.url) {
-        return data.url as string;
+    const endpoints = getPublicEndpointCandidates('upload_resume.php');
+
+    for (const endpoint of endpoints) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await readJson(response);
+        if (response.ok && data?.url) {
+          return data.url as string;
+        }
+      } catch (error) {
+        console.error(`Primary upload failed via ${endpoint}:`, error);
       }
-    } catch (error) {
-      console.error('Primary upload failed:', error);
     }
 
-    try {
-      // Fallback for hosts where multipart/form-data is blocked by WAF/mod_security.
-      const base64 = await fileToBase64(file);
-      const response = await fetch('/upload_resume.php', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          filename: file.name,
-          file_base64: base64,
-        }),
-      });
-      const data = await readJson(response);
-      if (response.ok && data?.url) {
-        return data.url as string;
+    // Fallback for hosts where multipart/form-data is blocked by WAF/mod_security.
+    const base64 = await fileToBase64(file);
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            filename: file.name,
+            file_base64: base64,
+          }),
+        });
+        const data = await readJson(response);
+        if (response.ok && data?.url) {
+          return data.url as string;
+        }
+      } catch (error) {
+        console.error(`Fallback upload failed via ${endpoint}:`, error);
       }
-    } catch (error) {
-      console.error('Fallback upload failed:', error);
     }
 
     return null;

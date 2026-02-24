@@ -19,7 +19,7 @@ const formSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   phone: z.string().min(10, "Please enter a valid phone number"),
   email: z.string().email("Please enter a valid email address"),
-  subject: z.string().min(2, "Subject must be at least 2 characters"),
+  subject: z.string().max(190, "Subject is too long").refine(val => val.length === 0 || val.length >= 2, "Subject must be at least 2 characters"),
   message: z.string().min(10, "Message must be at least 10 characters"),
   robotCheck: z.boolean().refine(val => val === true, "Please confirm you are not a robot")
 });
@@ -35,6 +35,17 @@ export default function Contact() {
       robotCheck: false
     }
   });
+
+  // Some hosting providers inject a "humans_21909" bot-protection cookie before allowing PHP endpoints.
+  // Set it proactively on production so our fetch request is not blocked with a 409.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const hasCookie = document.cookie.includes("humans_21909=");
+    const isProd = window.location.hostname.includes("mangosorange.com");
+    if (!hasCookie && isProd) {
+      document.cookie = "humans_21909=1; path=/; domain=.mangosorange.com; SameSite=Lax";
+    }
+  }, []);
   useEffect(() => {
     // Auto-scroll to message section when page loads
     const timer = setTimeout(() => {
@@ -55,37 +66,58 @@ export default function Contact() {
     try {
       setLoading(true);
 
-      const buildBody = () => {
-        const params = new URLSearchParams();
-        params.append('name', values.name);
-        params.append('phone', values.phone);
-        params.append('email', values.email);
-        params.append('subject', values.subject);
-        params.append('message', values.message);
-        return params.toString();
+      const params = new URLSearchParams();
+      params.append('name', values.name.trim());
+      params.append('phone', values.phone.trim());
+      params.append('email', values.email.trim());
+      params.append('subject', values.subject.trim());
+      params.append('message', values.message.trim());
+
+      const submitToEndpoint = async (endpoint: string) => {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          },
+          credentials: 'include',
+          body: params.toString(),
+        });
+
+        let data: any = null;
+        try {
+          data = await response.json();
+        } catch {
+          data = {};
+        }
+
+        return { response, data };
       };
 
-      const response = await fetch('/contact.php', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        },
-        body: buildBody(),
-      });
+      const endpoints = ['/api/contact.php', '/contact.php'];
+      let errorMessage = "Failed to send message. Please try again.";
 
-      let data: any = null;
-      try {
-        data = await response.json();
-      } catch {
-        data = {};
+      for (const endpoint of endpoints) {
+        try {
+          const { response, data } = await submitToEndpoint(endpoint);
+          if (response.ok && data?.success) {
+            toast.success("Message sent successfully! We'll get back to you soon.");
+            form.reset();
+            return;
+          }
+
+          errorMessage = data?.error || data?.message || errorMessage;
+
+          // Retry the legacy endpoint only when the preferred endpoint is missing.
+          if (response.status !== 404) {
+            break;
+          }
+        } catch (endpointError) {
+          console.warn(`Contact submit failed on ${endpoint}:`, endpointError);
+        }
       }
 
-      if (response.ok && data?.success) {
-        toast.success("Message sent successfully! We'll get back to you soon.");
-        form.reset();
-      } else {
-        toast.error(data?.error || data?.message || "Failed to send message. Please try again.");
-      }
+      toast.error(errorMessage);
     } catch (error) {
       console.error("Contact form submission error:", error);
       toast.error("An error occurred. Please try again.");

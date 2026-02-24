@@ -41,6 +41,27 @@ function sanitize_header_value($value) {
   return trim(str_replace(["\r", "\n"], '', (string)$value));
 }
 
+function normalize_mail_recipients($value) {
+  $raw = trim((string)$value);
+  if ($raw === '') return [];
+
+  $parts = preg_split('/[,\n;]+/', $raw);
+  if (!is_array($parts)) return [];
+
+  $valid = [];
+  foreach ($parts as $part) {
+    $candidate = strtolower(trim((string)$part));
+    if ($candidate === '') continue;
+    if (filter_var($candidate, FILTER_VALIDATE_EMAIL)) {
+      $valid[] = $candidate;
+    }
+  }
+
+  if (empty($valid)) return [];
+
+  return array_values(array_unique($valid));
+}
+
 function get_current_mail_domain() {
   $host = strtolower(trim((string)($_SERVER['HTTP_HOST'] ?? 'localhost')));
   $host = preg_replace('/:\d+$/', '', $host);
@@ -51,8 +72,9 @@ function get_current_mail_domain() {
 function resolve_mail_to() {
   global $config;
   $to = trim((string)($config['mail_to'] ?? ''));
-  if ($to !== '' && filter_var($to, FILTER_VALIDATE_EMAIL)) {
-    return $to;
+  $recipients = normalize_mail_recipients($to);
+  if (!empty($recipients)) {
+    return implode(', ', $recipients);
   }
 
   $fallback = 'info@' . get_current_mail_domain();

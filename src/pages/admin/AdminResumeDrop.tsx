@@ -62,7 +62,7 @@ const AdminResumeDrop = () => {
     setBulkUpdating(true);
     try {
       await Promise.all(
-        selectedIds.map(id => careerAPI.updateApplicantStatus(id, bulkStatus))
+        selectedIds.map(id => careerAPI.updateResumeDropStatus(id, bulkStatus))
       );
       toast.success(`Updated ${selectedIds.length} applications`);
       setSelectedIds([]);
@@ -304,6 +304,7 @@ const AdminResumeDrop = () => {
                 onUpdate={loadData}
                 jobTitle="General Application"
                 isGeneralApplication={true}
+                applicationType="resume_drop"
                 selectable={true}
                 selected={selectedIds.includes(applicant.id)}
                 onToggleSelect={toggleSelect}

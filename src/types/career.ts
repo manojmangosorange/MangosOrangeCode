@@ -31,6 +31,18 @@ export interface Applicant {
   updatedAt: string;
 }
 
+export interface ContactLead {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  subject: string;
+  message: string;
+  status: 'New' | 'In Progress' | 'Closed';
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Admin {
   id: string;
   email: string;
@@ -44,5 +56,7 @@ export interface DashboardStats {
   activeJobs: number;
   totalApplicants: number;
   pendingApplications: number;
+  totalContactLeads: number;
   recentApplications: Applicant[];
+  recentContactLeads: ContactLead[];
 }

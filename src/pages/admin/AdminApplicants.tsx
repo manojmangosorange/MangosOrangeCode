@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -10,6 +10,7 @@ import { Applicant, JobPosting } from '@/types/career';
 import { toast } from 'sonner';
 import { Search, Users, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useSearchParams } from 'react-router-dom';
 
 const AdminApplicants = () => {
   const [applicants, setApplicants] = useState<Applicant[]>([]);
@@ -21,10 +22,21 @@ const AdminApplicants = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkStatus, setBulkStatus] = useState<Applicant['status']>('Applied');
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    const status = searchParams.get('status');
+    const validStatuses: Applicant['status'][] = ['Applied', 'Shortlisted', 'Interviewed', 'Hired', 'Rejected'];
+    if (status && validStatuses.includes(status as Applicant['status'])) {
+      setStatusFilter(status);
+      return;
+    }
+    setStatusFilter('all');
+  }, [searchParams]);
 
   const loadData = async () => {
     try {
@@ -49,6 +61,18 @@ const AdminApplicants = () => {
     const matchesJob = jobFilter === 'all' || applicant.jobId === jobFilter;
     return matchesSearch && matchesStatus && matchesJob;
   });
+
+  const statusCards = useMemo(
+    () => [
+      { key: 'all', label: 'Total Applicants', value: applicants.length, className: 'border-slate-200 bg-slate-50 text-slate-900' },
+      { key: 'Applied', label: 'Applied', value: applicants.filter(a => a.status === 'Applied').length, className: 'border-blue-200 bg-blue-50 text-blue-900' },
+      { key: 'Shortlisted', label: 'Shortlisted', value: applicants.filter(a => a.status === 'Shortlisted').length, className: 'border-amber-200 bg-amber-50 text-amber-900' },
+      { key: 'Interviewed', label: 'Interviewed', value: applicants.filter(a => a.status === 'Interviewed').length, className: 'border-violet-200 bg-violet-50 text-violet-900' },
+      { key: 'Hired', label: 'Hired', value: applicants.filter(a => a.status === 'Hired').length, className: 'border-emerald-200 bg-emerald-50 text-emerald-900' },
+      { key: 'Rejected', label: 'Rejected', value: applicants.filter(a => a.status === 'Rejected').length, className: 'border-rose-200 bg-rose-50 text-rose-900' },
+    ],
+    [applicants]
+  );
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev =>
@@ -177,6 +201,26 @@ const AdminApplicants = () => {
           <p className="text-gray-800">
             Manage job applications and candidate pipeline
           </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+          {statusCards.map((card) => (
+            <button
+              key={card.key}
+              type="button"
+              className="text-left"
+              onClick={() => setStatusFilter(card.key as string)}
+            >
+              <Card
+                className={`transition-all duration-200 hover:shadow-md ${card.className} ${statusFilter === card.key ? 'ring-2 ring-primary/40' : ''}`}
+              >
+                <CardContent className="p-4">
+                  <p className="text-sm font-medium opacity-80">{card.label}</p>
+                  <p className="text-3xl font-bold">{card.value}</p>
+                </CardContent>
+              </Card>
+            </button>
+          ))}
         </div>
 
         {/* Filters */}

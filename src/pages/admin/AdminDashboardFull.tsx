@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import AdminLayout from '@/components/admin/AdminLayout';
+import { Link } from 'react-router-dom';
 import { authService } from '@/lib/auth';
 import { toast } from 'sonner';
 import { 
@@ -25,12 +26,26 @@ import {
   Briefcase, 
   Clock, 
   TrendingUp,
+  MessageSquare,
   Calendar,
   Mail,
   Phone
 } from 'lucide-react';
-import { Admin, DashboardStats, JobPosting } from '@/types/career';
+import { Admin, Applicant, ContactLead, DashboardStats, JobPosting } from '@/types/career';
 import { careerAPI } from '@/lib/career-api';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 const createRecruiterSchema = z.object({
   name: z.string().min(1, 'Please enter the name'),
   email: z.string().email('Please enter a valid email'),
@@ -52,7 +67,9 @@ const AdminDashboardFull = () => {
     activeJobs: 0,
     totalApplicants: 0,
     pendingApplications: 0,
+    totalContactLeads: 0,
     recentApplications: [],
+    recentContactLeads: [],
   });
   const [recentJobs, setRecentJobs] = useState<JobPosting[]>([]);
   const [recruiters, setRecruiters] = useState<RecruiterInfo[]>([]);
@@ -66,6 +83,10 @@ const AdminDashboardFull = () => {
   const [roleFilter, setRoleFilter] = useState<'all' | 'Admin' | 'Recruiter'>('all');
   const [roleEdits, setRoleEdits] = useState<Record<string, 'Admin' | 'Recruiter'>>({});
   const [roleSavingId, setRoleSavingId] = useState<string | null>(null);
+  const [jobApplicants, setJobApplicants] = useState<Applicant[]>([]);
+  const [generalApplicants, setGeneralApplicants] = useState<Applicant[]>([]);
+  const [contactLeads, setContactLeads] = useState<ContactLead[]>([]);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const createForm = useForm<CreateRecruiterFormData>({
     resolver: zodResolver(createRecruiterSchema),
     defaultValues: {
@@ -80,6 +101,7 @@ const AdminDashboardFull = () => {
     loadRecruiters();
     loadStats();
     loadRecentJobs();
+    loadAnalytics();
   }, []);
   useEffect(() => {
     if (currentUser && currentUser.role !== 'Admin') {
@@ -103,6 +125,24 @@ const AdminDashboardFull = () => {
       setRecentJobs(jobs.slice(0, 5));
     } catch (error) {
       console.error('Error loading recent jobs:', error);
+    }
+  };
+  const loadAnalytics = async () => {
+    setAnalyticsLoading(true);
+    try {
+      const [jobApps, generalApps, leadsResponse] = await Promise.all([
+        careerAPI.getApplicants(),
+        careerAPI.getGeneralApplications(),
+        careerAPI.getContactLeads(200),
+      ]);
+      setJobApplicants(jobApps);
+      setGeneralApplicants(generalApps);
+      setContactLeads(leadsResponse.items || []);
+    } catch (error) {
+      console.error('Error loading analytics:', error);
+      toast.error('Failed to load analytics');
+    } finally {
+      setAnalyticsLoading(false);
     }
   };
   const loadRecruiters = async () => {
@@ -208,19 +248,106 @@ const AdminDashboardFull = () => {
       setRoleSavingId(null);
     }
   };
+
+  const allApplicants = useMemo(() => [...jobApplicants, ...generalApplicants], [jobApplicants, generalApplicants]);
+
+  const applicantStatusChart = useMemo(() => {
+    const statusOrder: Applicant['status'][] = ['Applied', 'Shortlisted', 'Interviewed', 'Hired', 'Rejected'];
+    const colorMap: Record<Applicant['status'], string> = {
+      Applied: '#2563eb',
+      Shortlisted: '#f59e0b',
+      Interviewed: '#7c3aed',
+      Hired: '#16a34a',
+      Rejected: '#ef4444',
+    };
+
+    return statusOrder.map((status) => ({
+      name: status,
+      value: allApplicants.filter((applicant) => applicant.status === status).length,
+      color: colorMap[status],
+    }));
+  }, [allApplicants]);
+
+  const sourceChart = useMemo(
+    () => [
+      { name: 'Job Applications', value: jobApplicants.length, color: '#1d4ed8' },
+      { name: 'Resume Drop', value: generalApplicants.length, color: '#d97706' },
+    ],
+    [jobApplicants.length, generalApplicants.length]
+  );
+
+  const contactLeadStatusChart = useMemo(() => {
+    const rows: ContactLead['status'][] = ['New', 'In Progress', 'Closed'];
+    const colorMap: Record<ContactLead['status'], string> = {
+      New: '#0891b2',
+      'In Progress': '#7c3aed',
+      Closed: '#16a34a',
+    };
+
+    return rows.map((status) => ({
+      name: status,
+      value: contactLeads.filter((lead) => lead.status === status).length,
+      color: colorMap[status],
+    }));
+  }, [contactLeads]);
+
+  const monthlyTrend = useMemo(() => {
+    const now = new Date();
+    const buckets = Array.from({ length: 6 }).map((_, offset) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - (5 - offset), 1);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const label = date.toLocaleString('default', { month: 'short' });
+      return { key, month: label, job: 0, general: 0 };
+    });
+
+    const byKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+
+    jobApplicants.forEach((applicant) => {
+      const appliedAt = new Date(applicant.appliedAt);
+      if (Number.isNaN(appliedAt.getTime())) return;
+      const key = `${appliedAt.getFullYear()}-${String(appliedAt.getMonth() + 1).padStart(2, '0')}`;
+      const bucket = byKey.get(key);
+      if (bucket) bucket.job += 1;
+    });
+
+    generalApplicants.forEach((applicant) => {
+      const appliedAt = new Date(applicant.appliedAt);
+      if (Number.isNaN(appliedAt.getTime())) return;
+      const key = `${appliedAt.getFullYear()}-${String(appliedAt.getMonth() + 1).padStart(2, '0')}`;
+      const bucket = byKey.get(key);
+      if (bucket) bucket.general += 1;
+    });
+
+    return buckets.map((bucket) => ({
+      month: bucket.month,
+      Job: bucket.job,
+      General: bucket.general,
+      Total: bucket.job + bucket.general,
+    }));
+  }, [jobApplicants, generalApplicants]);
+
+  const leadResponseRate = useMemo(() => {
+    const total = contactLeads.length;
+    if (total === 0) return 0;
+    const closed = contactLeads.filter((lead) => lead.status === 'Closed').length;
+    return Math.round((closed / total) * 100);
+  }, [contactLeads]);
+
   return <AdminLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
-            <p className="text-muted-foreground">
-              Manage recruiter accounts and oversee the career system
-            </p>
+        <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 via-white to-cyan-50 p-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-slate-900">Admin Dashboard</h1>
+              <p className="text-slate-600">
+                Manage recruiters, monitor hiring performance, and track lead quality in real time.
+              </p>
+            </div>
+            <Badge className="text-sm bg-slate-900 hover:bg-slate-900 text-white border-slate-900 w-fit">
+              <Shield className="w-4 h-4 mr-1" />
+              Administrator
+            </Badge>
           </div>
-          <Badge variant="secondary" className="text-sm">
-            <Shield className="w-4 h-4 mr-1" />
-            Administrator
-          </Badge>
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
@@ -231,11 +358,11 @@ const AdminDashboardFull = () => {
 
           <TabsContent value="overview" className="space-y-6">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 items-stretch">
               {statsLoading ? (
-                Array.from({ length: 4 }).map((_, index) => (
-                  <Card key={index} className="hover:shadow-md transition-shadow">
-                    <CardContent className="p-6">
+                Array.from({ length: 5 }).map((_, index) => (
+                  <Card key={index} className="h-full hover:shadow-md transition-shadow">
+                    <CardContent className="h-full p-6">
                       <div className="animate-pulse">
                         <div className="h-4 bg-muted rounded w-1/2 mb-2"></div>
                         <div className="h-8 bg-muted rounded w-1/3"></div>
@@ -249,54 +376,232 @@ const AdminDashboardFull = () => {
                     title: 'Total Jobs',
                     value: stats.totalJobs,
                     icon: Briefcase,
-                    color: 'text-blue-600',
-                    bgColor: 'bg-blue-100',
+                    href: '/admin/jobs',
+                    iconClass: 'text-blue-700',
+                    iconBgClass: 'bg-blue-100',
+                    cardClass: 'border-blue-200 bg-gradient-to-br from-blue-50 to-white',
                   },
                   {
                     title: 'Active Jobs',
                     value: stats.activeJobs,
                     icon: TrendingUp,
-                    color: 'text-green-600',
-                    bgColor: 'bg-green-100',
+                    href: '/admin/jobs?status=Active',
+                    iconClass: 'text-emerald-700',
+                    iconBgClass: 'bg-emerald-100',
+                    cardClass: 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white',
                   },
                   {
                     title: 'Total Applicants',
                     value: stats.totalApplicants,
                     icon: Users,
-                    color: 'text-purple-600',
-                    bgColor: 'bg-purple-100',
+                    href: '/admin/applicants',
+                    iconClass: 'text-violet-700',
+                    iconBgClass: 'bg-violet-100',
+                    cardClass: 'border-violet-200 bg-gradient-to-br from-violet-50 to-white',
                   },
                   {
                     title: 'Pending Applications',
                     value: stats.pendingApplications,
                     icon: Clock,
-                    color: 'text-orange-600',
-                    bgColor: 'bg-orange-100',
+                    href: '/admin/applicants?status=Applied',
+                    iconClass: 'text-orange-700',
+                    iconBgClass: 'bg-orange-100',
+                    cardClass: 'border-orange-200 bg-gradient-to-br from-orange-50 to-white',
+                  },
+                  {
+                    title: 'Contact Leads',
+                    value: stats.totalContactLeads,
+                    icon: MessageSquare,
+                    href: '/admin/contact-leads',
+                    iconClass: 'text-cyan-700',
+                    iconBgClass: 'bg-cyan-100',
+                    cardClass: 'border-cyan-200 bg-gradient-to-br from-cyan-50 to-white',
                   },
                 ].map((stat) => {
                   const Icon = stat.icon;
                   return (
-                    <Card key={stat.title} className="hover:shadow-md transition-shadow">
-                      <CardContent className="p-6">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-medium text-muted-foreground">
-                              {stat.title}
-                            </p>
-                            <p className="text-2xl font-bold text-foreground">
-                              {stat.value}
-                            </p>
+                    <Link key={stat.title} to={stat.href} className="group block h-full">
+                      <Card className={`h-full transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 ${stat.cardClass}`}>
+                        <CardContent className="h-full p-6">
+                          <div className="h-full flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-muted-foreground leading-5 min-h-10">
+                                {stat.title}
+                              </p>
+                              <p className="text-2xl font-bold text-foreground">
+                                {stat.value}
+                              </p>
+                            </div>
+                            <div className={`w-12 h-12 ${stat.iconBgClass} rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform`}>
+                              <Icon className={`w-6 h-6 ${stat.iconClass}`} />
+                            </div>
                           </div>
-                          <div className={`w-12 h-12 ${stat.bgColor} rounded-lg flex items-center justify-center`}>
-                            <Icon className={`w-6 h-6 ${stat.color}`} />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
+                        </CardContent>
+                      </Card>
+                    </Link>
                   );
                 })
               )}
             </div>
+
+            <Card className="border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-xl">Analytics Overview</CardTitle>
+                <CardDescription>
+                  Live analytics from job applications, resume drop pipeline, and contact lead follow-up.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {analyticsLoading ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                    {Array.from({ length: 4 }).map((_, index) => (
+                      <div key={index} className="rounded-xl border p-4">
+                        <div className="animate-pulse space-y-2">
+                          <div className="h-4 bg-muted rounded w-1/2"></div>
+                          <div className="h-8 bg-muted rounded w-1/3"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                        <p className="text-sm text-blue-700 font-medium">Job Applications</p>
+                        <p className="text-3xl font-bold text-blue-900">{jobApplicants.length}</p>
+                      </div>
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                        <p className="text-sm text-amber-700 font-medium">Resume Drop</p>
+                        <p className="text-3xl font-bold text-amber-900">{generalApplicants.length}</p>
+                      </div>
+                      <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
+                        <p className="text-sm text-cyan-700 font-medium">Contact Leads</p>
+                        <p className="text-3xl font-bold text-cyan-900">{contactLeads.length}</p>
+                      </div>
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                        <p className="text-sm text-emerald-700 font-medium">Lead Closure Rate</p>
+                        <p className="text-3xl font-bold text-emerald-900">{leadResponseRate}%</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                      <div className="rounded-xl border border-slate-200 p-4">
+                        <h3 className="font-semibold text-slate-900 mb-3">Applications Trend (Last 6 Months)</h3>
+                        <div className="h-72">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={monthlyTrend}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                              <XAxis dataKey="month" />
+                              <YAxis allowDecimals={false} />
+                              <Tooltip />
+                              <Legend />
+                              <Bar dataKey="Job" fill="#1d4ed8" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="General" fill="#d97706" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 p-4">
+                        <h3 className="font-semibold text-slate-900 mb-3">Applicant Status Distribution</h3>
+                        <div className="h-72">
+                          {applicantStatusChart.every((row) => row.value === 0) ? (
+                            <div className="h-full flex items-center justify-center text-sm text-slate-500">
+                              No applicant data available
+                            </div>
+                          ) : (
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={applicantStatusChart}
+                                  dataKey="value"
+                                  nameKey="name"
+                                  cx="50%"
+                                  cy="50%"
+                                  innerRadius={55}
+                                  outerRadius={92}
+                                  paddingAngle={2}
+                                >
+                                  {applicantStatusChart.map((entry) => (
+                                    <Cell key={entry.name} fill={entry.color} />
+                                  ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 p-4">
+                        <h3 className="font-semibold text-slate-900 mb-3">Application Source Mix</h3>
+                        <div className="h-72">
+                          {sourceChart.every((row) => row.value === 0) ? (
+                            <div className="h-full flex items-center justify-center text-sm text-slate-500">
+                              No source data available
+                            </div>
+                          ) : (
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={sourceChart}
+                                  dataKey="value"
+                                  nameKey="name"
+                                  cx="50%"
+                                  cy="50%"
+                                  innerRadius={50}
+                                  outerRadius={90}
+                                  paddingAngle={2}
+                                >
+                                  {sourceChart.map((entry) => (
+                                    <Cell key={entry.name} fill={entry.color} />
+                                  ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 p-4">
+                        <h3 className="font-semibold text-slate-900 mb-3">Contact Lead Status</h3>
+                        <div className="h-72">
+                          {contactLeadStatusChart.every((row) => row.value === 0) ? (
+                            <div className="h-full flex items-center justify-center text-sm text-slate-500">
+                              No contact lead data available
+                            </div>
+                          ) : (
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={contactLeadStatusChart}
+                                  dataKey="value"
+                                  nameKey="name"
+                                  cx="50%"
+                                  cy="50%"
+                                  innerRadius={50}
+                                  outerRadius={90}
+                                  paddingAngle={2}
+                                >
+                                  {contactLeadStatusChart.map((entry) => (
+                                    <Cell key={entry.name} fill={entry.color} />
+                                  ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
             {/* Recent Applications */}
             <Card>
@@ -370,6 +675,66 @@ const AdminDashboardFull = () => {
               </CardContent>
             </Card>
 
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Contact Leads</CardTitle>
+                <CardDescription>Latest website contact form submissions</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? (
+                  <div className="space-y-4">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <div key={index} className="p-4 border border-border rounded-lg">
+                        <div className="animate-pulse">
+                          <div className="h-4 bg-muted rounded w-1/3 mb-2"></div>
+                          <div className="h-3 bg-muted rounded w-2/3 mb-1"></div>
+                          <div className="h-3 bg-muted rounded w-full"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : stats.recentContactLeads.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No recent contact leads
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {stats.recentContactLeads.map((lead) => (
+                      <div
+                        key={lead.id}
+                        className="p-4 border border-border rounded-lg hover:bg-accent/50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-3 mb-1">
+                          <h3 className="font-medium text-foreground">{lead.name}</h3>
+                          <Badge variant="outline">{lead.status}</Badge>
+                        </div>
+                        <p className="text-sm text-foreground mb-2">{lead.subject}</p>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          {lead.message.length > 160 ? `${lead.message.slice(0, 160)}...` : lead.message}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Mail className="w-3 h-3" />
+                            {lead.email}
+                          </div>
+                          {lead.phone && (
+                            <div className="flex items-center gap-1">
+                              <Phone className="w-3 h-3" />
+                              {lead.phone}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(lead.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Recent Activity */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
@@ -386,7 +751,7 @@ const AdminDashboardFull = () => {
                         <div key={job.id} className="flex items-center justify-between p-3 border border-border rounded-lg">
                           <div>
                             <p className="font-medium text-foreground">{job.title}</p>
-                            <p className="text-sm text-muted-foreground">{job.department} • {job.location}</p>
+                            <p className="text-sm text-muted-foreground">{job.department} | {job.location}</p>
                           </div>
                           <Badge variant={job.status === 'Active' ? 'default' : 'secondary'}>
                             {job.status}

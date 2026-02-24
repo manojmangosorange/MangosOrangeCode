@@ -9,12 +9,14 @@ import JobForm from '@/components/admin/JobForm';
 import { careerAPI } from '@/lib/career-api';
 import { JobPosting } from '@/types/career';
 import { toast } from 'sonner';
+import { useSearchParams } from 'react-router-dom';
 import { 
   Plus, 
   Search, 
   Edit, 
   Eye, 
   EyeOff,
+  Trash2,
   Calendar,
   MapPin,
   Users,
@@ -28,10 +30,22 @@ const AdminJobs = () => {
   const [editingJob, setEditingJob] = useState<JobPosting | undefined>();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     loadJobs();
   }, []);
+
+  useEffect(() => {
+    const status = searchParams.get('status');
+    const validStatuses: JobPosting['status'][] = ['Active', 'Draft', 'Closed'];
+    if (status && validStatuses.includes(status as JobPosting['status'])) {
+      setStatusFilter(status);
+      return;
+    }
+    setStatusFilter('all');
+  }, [searchParams]);
 
   const loadJobs = async () => {
     try {
@@ -65,6 +79,29 @@ const AdminJobs = () => {
     } catch (error) {
       console.error('Error updating visibility:', error);
       toast.error('An error occurred');
+    }
+  };
+
+  const handleDeleteJob = async (job: JobPosting) => {
+    const confirmed = confirm(`Are you sure you want to remove "${job.title}"? This action cannot be undone.`);
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingJobId(job.id);
+    try {
+      const success = await careerAPI.deleteJobPosting(job.id);
+      if (success) {
+        toast.success('Job post removed successfully');
+        loadJobs();
+      } else {
+        toast.error('Failed to remove job post');
+      }
+    } catch (error) {
+      console.error('Error deleting job posting:', error);
+      toast.error('An error occurred while removing the job post');
+    } finally {
+      setDeletingJobId(null);
     }
   };
 
@@ -197,9 +234,9 @@ const AdminJobs = () => {
                       </div>
                       <div className="flex items-center gap-4 text-sm text-gray-800">
                         <span>{job.department}</span>
-                        <span>•</span>
+                        <span>|</span>
                         <span>{job.type}</span>
-                        <span>•</span>
+                        <span>|</span>
                         <div className="flex items-center gap-1">
                           <MapPin className="w-3 h-3" />
                           {job.location}
@@ -221,6 +258,15 @@ const AdminJobs = () => {
                         onClick={() => handleEdit(job)}
                       >
                         <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteJob(job)}
+                        disabled={deletingJobId === job.id}
+                        title="Remove job post"
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>

@@ -1,47 +1,54 @@
-# Apache configuration for SPA with proper sitemap access
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
-  
-  # Ensure sitemap.xml and robots.txt are accessible
-  RewriteRule ^sitemap\.xml$ - [L]
-  RewriteRule ^robots\.txt$ - [L]
-  
-  # Don't rewrite files or directories
+
+  # Canonical domain and protocol
+  RewriteCond %{HTTPS} !=on [OR]
+  RewriteCond %{HTTP_HOST} ^www\.mangosorange\.com$ [NC]
+  RewriteRule ^ https://mangosorange.com%{REQUEST_URI} [R=301,L]
+
+  # Redirect legacy/public aliases to canonical routes
+  RewriteRule ^home/?$ / [R=301,L,NC]
+  RewriteRule ^career/?$ /careers [R=301,L,NC]
+  RewriteRule ^staffing-solutions/?$ /staffing [R=301,L,NC]
+
+  # Keep robots and sitemap reachable directly
+  RewriteRule ^robots\.txt$ - [L,NC]
+  RewriteRule ^sitemap\.xml$ - [L,NC]
+
+  # Serve real files/folders as-is
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
-  
-  # Rewrite everything else to index.html for React Router
+
+  # SPA fallback
   RewriteRule ^ index.html [L]
 </IfModule>
 
-# Prevent stale HTML cache that can cause white screen after deploy
 <IfModule mod_headers.c>
+  # Prevent stale HTML after deployment
   <FilesMatch "\.(html|htm)$">
     Header set Cache-Control "no-cache, no-store, must-revalidate"
     Header set Pragma "no-cache"
     Header set Expires "0"
   </FilesMatch>
 
-  # Hashed static assets can be aggressively cached
+  # Aggressive caching for versioned/static assets
   <FilesMatch "\.(js|css|woff|woff2|png|jpg|jpeg|gif|svg|webp|avif|ico)$">
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
+
+  # Keep sitemap cache short for crawl refresh
+  <FilesMatch "sitemap\.xml$">
+    Header set Cache-Control "public, max-age=3600"
+  </FilesMatch>
 </IfModule>
 
-# Set proper MIME types
 <IfModule mod_mime.c>
   AddType application/xml .xml
   AddType text/plain .txt
 </IfModule>
 
-# Enable compression
 <IfModule mod_deflate.c>
   AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css application/javascript application/json
 </IfModule>
-
-# Cache control for sitemap (1 hour)
-<FilesMatch "sitemap\.xml$">
-  Header set Cache-Control "public, max-age=3600"
-</FilesMatch>
